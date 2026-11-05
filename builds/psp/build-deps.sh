@@ -270,6 +270,7 @@ if [[ ! -f "${PREFIX}/lib/libicuuc.a" ]]; then
 			--disable-icuio --with-data-packaging=static && \
 		# Static data as C source, not position independent assembly: the PSP toolchain does not
 		# do PIC code
+		make -C data icupkg.inc && \
 		sed -i 's/ -DPIC -fPIC//; s/^GENCCODE_ASSEMBLY_TYPE=.*/GENCCODE_ASSEMBLY_TYPE=/' data/icupkg.inc && \
 		make -j"${JOBS}" && make install)
 else
