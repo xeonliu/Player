@@ -1,0 +1,33 @@
+{
+  "strategy": "additive",
+  "featureFilters": {
+    "cnvalias": "include",
+    "normalization": "include",
+    "conversion_mappings": {
+      "includelist": [
+        "ibm-943_P15A-2003",
+        "windows-949-2000",
+        "ibm-1386_P100-2001",
+        "windows-950-2000",
+        "ibm-874_P100-1995",
+        "windows-874-2000",
+        "gb18030-2022",
+        "ibm-970_P110_P110-2006_U2",
+        "ibm-33722_P12A_P12A-2004_U2",
+        "ibm-1373_P100-2002",
+        "ibm-5346_P100-1998",
+        "ibm-5347_P100-1998",
+        "ibm-5348_P100-1997",
+        "ibm-5349_P100-1998",
+        "ibm-5350_P100-1998",
+        "ibm-9447_P100-2002",
+        "ibm-9448_X100-2005",
+        "ibm-9449_P100-2002",
+        "ibm-5354_P100-1998",
+        "windows-936-2000",
+        "ibm-1363_P11B-1998",
+        "ibm-1383_P110-1999"
+      ]
+    }
+  }
+}

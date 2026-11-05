@@ -17,9 +17,29 @@
 
 #include <pspkernel.h>
 #include <pspthreadman.h>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include "player.h"
+
+#include <cerrno>
+#include <sys/types.h>
+
+// newlib for the PSP has no chown and ftruncate. Libraries need them for features the Player does
+// not use (setting the owner when extracting LZH archives, writing sound files), so a stub that
+// fails cleanly is enough to link them.
+extern "C" {
+int chown(const char* /* path */, uid_t /* owner */, gid_t /* group */) {
+	errno = ENOSYS;
+	return -1;
+}
+
+int ftruncate(int /* fd */, off_t /* length */) {
+	errno = ENOSYS;
+	return -1;
+}
+}
 
 PSP_MODULE_INFO("EasyRPG Player", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
@@ -64,8 +84,29 @@ namespace {
 	}
 }
 
+#ifdef PLAYER_PSP_AUDIO_STATS
+// Diagnostic only: how much memory is left for the game, found by allocating until it fails
+static void LogHeapSize() {
+	static void* blocks[2048];
+	size_t count = 0;
+	while (count < 2048 && (blocks[count] = std::malloc(64 * 1024)) != nullptr) {
+		++count;
+	}
+	for (size_t i = 0; i < count; ++i) {
+		std::free(blocks[i]);
+	}
+	if (FILE* f = std::fopen("ms0:/PSP/GAME/EasyRPG/memory.txt", "w")) {
+		std::fprintf(f, "heap_kb=%u\n", static_cast<unsigned>(count * 64));
+		std::fclose(f);
+	}
+}
+#endif
+
 int main(int argc, char* argv[]) {
 	SetupCallbacks();
+#ifdef PLAYER_PSP_AUDIO_STATS
+	LogHeapSize();
+#endif
 
 	std::vector<std::string> args(argv, argv + argc);
 

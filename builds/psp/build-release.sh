@@ -41,19 +41,22 @@ cmake -S "${ROOT}" -B "${BUILD_DIR}" "${GENERATOR[@]}" \
 	-DCMAKE_INSTALL_PREFIX="${PSPDEV}/psp" \
 	-DBUILD_SHARED_LIBS=OFF \
 	-DPLAYER_BUILD_LIBLCF=OFF \
-	-DPLAYER_WITH_FREETYPE=OFF \
-	-DPLAYER_WITH_HARFBUZZ=OFF \
-	-DPLAYER_WITH_LHASA=OFF \
-	-DPLAYER_WITH_NLOHMANN_JSON=OFF \
-	-DPLAYER_WITH_MPG123=OFF \
-	-DPLAYER_WITH_LIBSNDFILE=OFF \
-	-DPLAYER_WITH_OGGVORBIS=OFF \
-	-DPLAYER_WITH_OPUS=OFF \
+	-DPLAYER_WITH_FREETYPE=ON \
+	-DPLAYER_WITH_HARFBUZZ=ON \
+	-DPLAYER_WITH_LHASA=ON \
+	-DPLAYER_WITH_NLOHMANN_JSON=ON \
+	-DPLAYER_WITH_MPG123=ON \
+	-DPLAYER_WITH_LIBSNDFILE=ON \
+	-DPLAYER_WITH_OGGVORBIS=ON \
+	-DPLAYER_WITH_OPUS=ON \
+	-DPLAYER_WITH_XMP=ON \
+	-DPLAYER_WITH_SPEEXDSP=ON \
+	-DPLAYER_WITH_SAMPLERATE=OFF \
+	-DPLAYER_AUDIO_RESAMPLER=speexdsp \
+	-DPLAYER_WITH_BAEKMUK=ON \
+	-DPLAYER_WITH_WQY=ON \
 	-DPLAYER_WITH_WILDMIDI=OFF \
 	-DPLAYER_WITH_FLUIDSYNTH=OFF \
-	-DPLAYER_WITH_XMP=OFF \
-	-DPLAYER_WITH_BAEKMUK=OFF \
-	-DPLAYER_WITH_WQY=OFF \
 	-DPLAYER_VERSIONED_PACKAGES=OFF \
 	${PSP_CMAKE_ARGS:-}
 
@@ -104,11 +107,25 @@ Controls
   Start        settings menu
   Select       back
 
+Supported
+---------
+* Text in all encodings RPG Maker games use: Japanese (Shift-JIS), Simplified and
+  Traditional Chinese (GBK, Big5), Korean, Cyrillic and other Windows code pages. The
+  built-in fonts cover Chinese, Japanese and Korean; external TrueType fonts work too.
+* Music and sound: MIDI (built-in FM synthesizer), WAV (PCM, ADPCM), MP3, Ogg Vorbis,
+  Opus and tracker modules (MOD/XM/S3M/IT). Sounds at other sample rates are resampled.
+* Games packed as LZH archives.
+
+Memory
+------
+The whole program is loaded into RAM. On a PSP-2000/3000/Go about 39 MB are left for the
+game. A PSP-1000 only has about 7 MB left, so large games (many big pictures or maps)
+can run out of memory there.
+
 Limitations of this build
 -------------------------
-* Only windows-1252 text is supported (no Japanese / Shift-JIS encoding).
 * Video is software rendered at 1:1 scale, centered on the 480x272 screen.
-* Game data must fit in the PSP's memory; large games may run out of memory.
+* MIDI is played by the built-in synthesizer only (no SoundFont or GUS patch support).
 
 Source code and bug reports: https://github.com/EasyRPG/Player
 EOF

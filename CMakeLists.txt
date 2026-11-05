@@ -1412,6 +1412,8 @@ elseif(PLAYER_CONSOLE_PORT AND NOT PLAYER_TARGET_PLATFORM STREQUAL "libretro")
 		add_executable(easyrpg-player src/platform/psp/main.cpp)
 		target_link_libraries(easyrpg-player
 			${PROJECT_NAME}
+			# static FreeType needs bzip2 for compressed fonts
+			-lbz2
 			-lpspdisplay
 			-lpspctrl
 			-lpspaudio
@@ -1419,6 +1421,10 @@ elseif(PLAYER_CONSOLE_PORT AND NOT PLAYER_TARGET_PLATFORM STREQUAL "libretro")
 			-lpsprtc
 			-lpspuser
 			-lpspsdk)
+		option(PLAYER_PSP_LINK_MAP "Write a link map (to see which library costs how much memory)" OFF)
+		if(PLAYER_PSP_LINK_MAP)
+			target_link_options(easyrpg-player PRIVATE "-Wl,-Map,${CMAKE_CURRENT_BINARY_DIR}/psp/easyrpg-player.map")
+		endif()
 		# Turn the ELF into an EBOOT.PBP that the PSP can start (create_pbp_file comes from pspdev)
 		set(PSP_EBOOT_DIR "${CMAKE_CURRENT_BINARY_DIR}/psp")
 		# create_pbp_file strips the ELF in place. Keep a copy with symbols for profiling and
@@ -1430,6 +1436,8 @@ elseif(PLAYER_CONSOLE_PORT AND NOT PLAYER_TARGET_PLATFORM STREQUAL "libretro")
 		create_pbp_file(
 			TARGET easyrpg-player
 			TITLE "EasyRPG Player"
+			# Let the game use all memory of PSP-2000/3000 (64 MB), the default is 24 MB
+			MEMSIZE 1
 			ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/resources/psp/ICON0.PNG"
 			OUTPUT_DIR "${PSP_EBOOT_DIR}")
 		install(FILES "${PSP_EBOOT_DIR}/EBOOT.PBP" DESTINATION . COMPONENT psp)

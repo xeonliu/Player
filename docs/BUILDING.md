@@ -91,16 +91,21 @@ Switch, Wii U and 3DS support shipping games, use these parameters:
 
 Requires the [pspdev] toolchain. Set `PSPDEV` to its install prefix, then:
 
-    # Builds inih and liblcf (and zlib, libpng, pixman, fmt if the toolchain
-    # does not ship them) into $PSPDEV/psp
+    # Builds what the toolchain does not ship (inih, ICU, liblcf, lhasa,
+    # SpeexDSP, libsndfile, nlohmann_json) into $PSPDEV/psp. A C++ compiler
+    # and python3 are needed for the ICU build tools.
     builds/psp/build-deps.sh
     cmake -S . -B build-psp -G Ninja \
         -DCMAKE_TOOLCHAIN_FILE=builds/psp/PspToolchain.cmake \
         -DBUILD_SHARED_LIBS=OFF -DPLAYER_BUILD_LIBLCF=OFF \
-        -DPLAYER_WITH_FREETYPE=OFF -DPLAYER_WITH_HARFBUZZ=OFF \
-        -DPLAYER_WITH_LHASA=OFF -DPLAYER_WITH_NLOHMANN_JSON=OFF \
-        -DPLAYER_WITH_BAEKMUK=OFF -DPLAYER_WITH_WQY=OFF
+        -DPLAYER_AUDIO_RESAMPLER=speexdsp
     cmake --build build-psp
+
+All features are enabled except MIDI through WildMidi, FluidSynth or native
+devices. ICU only contains the charset converters and normalization (about
+1 MB of data), see `builds/psp/icu-data-filter.json`. The program is loaded
+into RAM completely: a PSP-1000 has about 7 MB left for the game, a
+PSP-2000/3000 about 39 MB.
 
 The build produces `build-psp/psp/EBOOT.PBP`. Put it in a folder named
 `EasyRPG` under `ms0:/PSP/GAME/` together with the game data. The
