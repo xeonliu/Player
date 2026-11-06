@@ -173,23 +173,25 @@ std::streambuf::pos_type Filesystem_Stream::FdStreamBuf::seekoff(std::streambuf:
 	}
 
 	if (dir == std::ios_base::cur) {
+		// Compare the distance with the buffer sizes as integers. Doing this with pointer
+		// arithmetic (gptr() + offset) overflows for large offsets on 32-bit platforms
+		// (e.g. the PSP) and wrongly reports the target as cached.
 		if (offset < 0) {
-			auto dist = std::distance(gptr(), gptr() - offset);
-			if (gptr() + offset < eback()) {
+			const auto back = -offset;
+			if (back > static_cast<std::streambuf::off_type>(gptr() - eback())) {
 				// Not cached: Outside of the buffer: Reposition the stream
-				file_offset = lseek(fd, -dist - bytes_remaining(), SEEK_CUR);
+				file_offset = lseek(fd, offset - bytes_remaining(), SEEK_CUR);
 				clear_buffer();
 			} else {
-				setg(buffer.begin(), gptr() - dist, egptr());
+				setg(buffer.begin(), gptr() - static_cast<std::ptrdiff_t>(back), egptr());
 			}
 		} else if (offset > 0) {
-			auto dist = std::distance(gptr(), gptr() + offset);
-			if (gptr() + offset > egptr()) {
+			if (offset > static_cast<std::streambuf::off_type>(egptr() - gptr())) {
 				// Not cached: Outside of the buffer: Reposition the stream
-				file_offset = lseek(fd, dist - bytes_remaining(), SEEK_CUR);
+				file_offset = lseek(fd, offset - bytes_remaining(), SEEK_CUR);
 				clear_buffer();
 			} else {
-				setg(buffer.begin(), gptr() + dist, egptr());
+				setg(buffer.begin(), gptr() + static_cast<std::ptrdiff_t>(offset), egptr());
 			}
 		}
 		return file_offset - bytes_remaining();
