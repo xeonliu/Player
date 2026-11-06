@@ -149,7 +149,7 @@ static void WriteLog(LogLevel lvl, std::string const& msg, Color const& c = Colo
 		if (last_message.repeat > 0) {
 			output_time() << Output::LogLevelToString(last_message.lvl) << ": " << last_message.msg << " [" << last_message.repeat + 1 << "x]" << std::endl;
 		}
-		output_time() << prefix << msg << '\n';
+		output_time() << prefix << msg << std::endl; // flush: the log must survive crashes
 
 		last_message.repeat = 0;
 		last_message.msg = msg;

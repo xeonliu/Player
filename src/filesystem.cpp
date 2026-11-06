@@ -125,7 +125,7 @@ FilesystemView Filesystem::Create(std::string_view path) const {
 			return {};
 		}
 
-		std::shared_ptr<Filesystem> filesystem = std::make_shared<ZipFilesystem>(archive_name, Subtree(archive_parent_path));
+		std::shared_ptr<Filesystem> filesystem = std::make_shared<ZipFilesystem>(archive_name, Subtree(archive_parent_path), Player::forced_encoding);
 #if HAVE_LHASA
 		if (!filesystem->IsValid()) {
 			filesystem = std::make_shared<LzhFilesystem>(archive_name, Subtree(archive_parent_path));

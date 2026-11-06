@@ -387,6 +387,9 @@ namespace Player {
 	/** Encoding used */
 	extern std::string encoding;
 
+	/** Encoding forced by --encoding (empty if not set). Also used for archive file names. */
+	extern std::string forced_encoding;
+
 	/** Backslash recoded to utf8 string */
 	extern std::string escape_symbol;
 

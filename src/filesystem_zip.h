@@ -66,6 +66,7 @@ private:
 	bool ReadCentralDirectoryEntry(std::istream& zipfile, std::string& filepath, ZipEntry& entry, bool& is_utf8) const;
 	bool ReadLocalHeader(std::istream& zipfile, StorageMethod& method, ZipEntry& entry) const;
 	const ZipEntry* Find(std::string_view what) const;
+	std::streambuf* CreateStreambufferFromEntry(const ZipEntry& central_entry, std::string_view path) const;
 
 	std::vector<std::pair<std::string, ZipEntry>> zip_entries;
 	std::vector<std::pair<std::string, ZipEntry>> zip_entries_cp437;

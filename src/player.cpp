@@ -145,11 +145,11 @@ namespace Player {
 	Game_Clock::time_point last_auto_screenshot;
 }
 
+// Overwritten by --encoding
+std::string Player::forced_encoding;
+
 namespace {
 	std::vector<std::string> arguments;
-
-	// Overwritten by --encoding
-	std::string forced_encoding;
 
 	FileRequestBinding system_request_id;
 	FileRequestBinding save_request_id;

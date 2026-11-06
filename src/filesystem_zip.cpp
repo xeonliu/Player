@@ -25,6 +25,7 @@
 #include <lcf/reader_util.h>
 #include <lcf/scope_guard.h>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <cassert>
 #include <algorithm>
@@ -82,11 +83,42 @@ ZipFilesystem::ZipFilesystem(std::string base_path, FilesystemView parent_fs, st
 	}
 
 	if (encoding.empty()) {
+		// Prefer an explicit encoding from RPG_RT.ini ([EasyRpg] Encoding=...), like the game data does.
+		// Only look at ASCII names, they are not affected by the encoding problem.
+		zip_is.clear();
+		zip_is.seekg(central_directory_offset);
+		ZipEntry ini_entry = {};
+		bool ini_found = false;
+		while (ReadCentralDirectoryEntry(zip_is, filepath, entry, is_utf8)) {
+			auto base = std::get<1>(FileFinder::GetPathAndFilename(filepath));
+			if (!entry.is_directory && Utils::StringIsAscii(base) && Utils::LowerCase(base) == "rpg_rt.ini") {
+				ini_entry = entry; // last one wins, like for duplicates
+				ini_found = true;
+			}
+		}
+		if (ini_found) {
+			std::unique_ptr<std::streambuf> ini_buf(CreateStreambufferFromEntry(ini_entry, "RPG_RT.ini"));
+			if (ini_buf) {
+				std::istream ini_stream(ini_buf.get());
+				encoding = lcf::ReaderUtil::GetEncoding(ini_stream);
+				if (encoding == "auto") {
+					encoding.clear();
+				}
+				if (!encoding.empty()) {
+					Output::Debug("ZIP encoding taken from RPG_RT.ini: {}", encoding);
+				}
+			}
+		}
+	}
+
+	if (encoding.empty()) {
+		zip_is.clear();
 		zip_is.seekg(central_directory_offset);
 		std::stringstream filename_guess;
 
 		// Guess the encoding first
 		int items = 0;
+		std::vector<std::string> candidates;
 		while (ReadCentralDirectoryEntry(zip_is, filepath, entry, is_utf8)) {
 			// Only consider Non-ASCII & Non-UTF8 for encoding detection
 			// Directories are skipped as most of them are usually ASCII and do not help with the detection
@@ -115,6 +147,7 @@ ZipFilesystem::ZipFilesystem(std::string base_path, FilesystemView parent_fs, st
 			encoding = "UTF-8";
 		} else {
 			std::vector<std::string> encodings = lcf::ReaderUtil::DetectEncodings(filename_guess.str());
+			candidates = encodings;
 			for (const auto &enc_ : encodings) {
 				lcf::Encoder lcf_encoder(enc_);
 				if (!lcf_encoder.IsOk()) {
@@ -126,7 +159,11 @@ ZipFilesystem::ZipFilesystem(std::string base_path, FilesystemView parent_fs, st
 				break;
 			}
 		}
-		Output::Debug("Detected ZIP encoding: {}", encoding);
+		std::string candidate_list;
+		for (const auto& c : candidates) {
+			candidate_list += (candidate_list.empty() ? "" : ", ") + c;
+		}
+		Output::Debug("Detected ZIP encoding: {} (candidates: {})", encoding, candidate_list);
 	}
 	bool enc_is_utf8 = encoding == "UTF-8";
 
@@ -135,6 +172,8 @@ ZipFilesystem::ZipFilesystem(std::string base_path, FilesystemView parent_fs, st
 
 	lcf::Encoder detected_encoder(encoding);
 	lcf::Encoder cp437_encoder("437");
+	// Some platforms (e.g. PSP with trimmed ICU data) lack the CP437 converter
+	const bool cp437_ok = cp437_encoder.IsOk();
 	std::vector<std::string> paths;
 	while (ReadCentralDirectoryEntry(zip_is, filepath, entry, is_utf8)) {
 		if (is_utf8 || enc_is_utf8 || Utils::StringIsAscii(filepath)) {
@@ -142,8 +181,11 @@ ZipFilesystem::ZipFilesystem(std::string base_path, FilesystemView parent_fs, st
 			filepath_cp437.clear();
 		} else {
 			// also store CP437 to ensure files inside 7zip zip archives are found
-			filepath_cp437 = filepath;
-			cp437_encoder.Encode(filepath_cp437);
+			filepath_cp437.clear();
+			if (cp437_ok) {
+				filepath_cp437 = filepath;
+				cp437_encoder.Encode(filepath_cp437);
+			}
 			detected_encoder.Encode(filepath);
 		}
 
@@ -369,73 +411,85 @@ int64_t ZipFilesystem::GetFilesize(std::string_view path) const {
 }
 
 std::streambuf* ZipFilesystem::CreateInputStreambuffer(std::string_view path, std::ios_base::openmode) const {
-	std::string path_normalized = normalize_path(path);
 	auto central_entry = Find(path);
-	if (central_entry && !central_entry->is_directory) {
-		zip_is.clear();
-		zip_is.seekg(central_entry->fileoffset);
-		StorageMethod method;
-		ZipEntry local_entry = {};
-		if (ReadLocalHeader(zip_is, method, local_entry)) {
-			if (central_entry->compressed_size != local_entry.compressed_size) {
-				if (local_entry.compressed_size == 0) {
-					local_entry.compressed_size = central_entry->compressed_size;
-				} else {
-					Output::Warning("ZipFS: Compressed size mismatch {}: {} != {}", path_normalized, central_entry->compressed_size, local_entry.compressed_size);
-					return nullptr;
-				}
-			}
+	if (!central_entry) {
+		Output::Debug("ZipFS: '{}' not found in the entry table", path);
+		return nullptr;
+	}
+	if (central_entry->is_directory) {
+		Output::Debug("ZipFS: '{}' is a directory", path);
+		return nullptr;
+	}
+	return CreateStreambufferFromEntry(*central_entry, path);
+}
 
-			if (central_entry->uncompressed_size != local_entry.uncompressed_size) {
-				if (local_entry.uncompressed_size == 0) {
-					local_entry.uncompressed_size = central_entry->uncompressed_size;
-				} else {
-					Output::Warning("ZipFS: Uncompressed size mismatch {}: {} != {}", path_normalized, central_entry->uncompressed_size, local_entry.uncompressed_size);
-					return nullptr;
-				}
-			}
+std::streambuf* ZipFilesystem::CreateStreambufferFromEntry(const ZipEntry& central_entry, std::string_view path) const {
+	std::string path_normalized = normalize_path(path);
+	zip_is.clear();
+	zip_is.seekg(central_entry.fileoffset);
+	StorageMethod method;
+	ZipEntry local_entry = {};
+	if (!ReadLocalHeader(zip_is, method, local_entry)) {
+		Output::Debug("ZipFS: Invalid local header for {} (offset {}, stream good={})", path_normalized, central_entry.fileoffset, zip_is.good());
+		return nullptr;
+	}
 
-			if (local_entry.compressed_size == 0xffffffff || local_entry.uncompressed_size == 0xffffffff) {
-				Output::Warning("ZipFS: Zip64 is not supported {}", path_normalized);
-				return nullptr;
-			}
-
-			zip_is.seekg(central_entry->fileoffset + local_entry.fileoffset);
-			if (method == StorageMethod::Plain) {
-				auto data = std::vector<uint8_t>(local_entry.uncompressed_size);
-				zip_is.read(reinterpret_cast<char*>(data.data()), data.size());
-				return new Filesystem_Stream::InputMemoryStreamBuf(std::move(data));
-			} else if (method == StorageMethod::Deflate) {
-				std::vector<uint8_t> comp_buf;
-				comp_buf.resize(local_entry.compressed_size);
-				zip_is.read(reinterpret_cast<char*>(comp_buf.data()), comp_buf.size());
-				auto dec_buf = std::vector<uint8_t>(local_entry.uncompressed_size);
-				z_stream zlib_stream = {};
-				zlib_stream.next_in = reinterpret_cast<Bytef*>(comp_buf.data());
-				zlib_stream.avail_in = static_cast<uInt>(comp_buf.size());
-				zlib_stream.next_out = reinterpret_cast<Bytef*>(dec_buf.data());
-				zlib_stream.avail_out = static_cast<uInt>(dec_buf.size());
-				inflateInit2(&zlib_stream, -MAX_WBITS);
-				auto inflate_sg = lcf::makeScopeGuard([&]() {
-					inflateEnd(&zlib_stream);
-				});
-
-				int zlib_error = inflate(&zlib_stream, Z_NO_FLUSH);
-				if (zlib_error == Z_OK) {
-					Output::Warning("ZipFS: zlib failed for {}: More data available (Archive corrupted?)", path_normalized);
-					return nullptr;
-				}
-				else if (zlib_error != Z_STREAM_END) {
-					Output::Warning("ZipFS: zlib failed for {}: {} ({})", path_normalized, zlib_error, zlib_stream.msg ? zlib_stream.msg : "No error message");
-					return nullptr;
-				}
-				return new Filesystem_Stream::InputMemoryStreamBuf(std::move(dec_buf));
-			} else {
-				Output::Warning("ZipFS: {} has unsupported compression format. Only Deflate is supported", path_normalized);
-				return nullptr;
-			}
+	if (central_entry.compressed_size != local_entry.compressed_size) {
+		if (local_entry.compressed_size == 0) {
+			local_entry.compressed_size = central_entry.compressed_size;
+		} else {
+			Output::Warning("ZipFS: Compressed size mismatch {}: {} != {}", path_normalized, central_entry.compressed_size, local_entry.compressed_size);
+			return nullptr;
 		}
 	}
+
+	if (central_entry.uncompressed_size != local_entry.uncompressed_size) {
+		if (local_entry.uncompressed_size == 0) {
+			local_entry.uncompressed_size = central_entry.uncompressed_size;
+		} else {
+			Output::Warning("ZipFS: Uncompressed size mismatch {}: {} != {}", path_normalized, central_entry.uncompressed_size, local_entry.uncompressed_size);
+			return nullptr;
+		}
+	}
+
+	if (local_entry.compressed_size == 0xffffffff || local_entry.uncompressed_size == 0xffffffff) {
+		Output::Warning("ZipFS: Zip64 is not supported {}", path_normalized);
+		return nullptr;
+	}
+
+	zip_is.seekg(central_entry.fileoffset + local_entry.fileoffset);
+	if (method == StorageMethod::Plain) {
+		auto data = std::vector<uint8_t>(local_entry.uncompressed_size);
+		zip_is.read(reinterpret_cast<char*>(data.data()), data.size());
+		return new Filesystem_Stream::InputMemoryStreamBuf(std::move(data));
+	} else if (method == StorageMethod::Deflate) {
+		std::vector<uint8_t> comp_buf;
+		comp_buf.resize(local_entry.compressed_size);
+		zip_is.read(reinterpret_cast<char*>(comp_buf.data()), comp_buf.size());
+		auto dec_buf = std::vector<uint8_t>(local_entry.uncompressed_size);
+		z_stream zlib_stream = {};
+		zlib_stream.next_in = reinterpret_cast<Bytef*>(comp_buf.data());
+		zlib_stream.avail_in = static_cast<uInt>(comp_buf.size());
+		zlib_stream.next_out = reinterpret_cast<Bytef*>(dec_buf.data());
+		zlib_stream.avail_out = static_cast<uInt>(dec_buf.size());
+		inflateInit2(&zlib_stream, -MAX_WBITS);
+		auto inflate_sg = lcf::makeScopeGuard([&]() {
+			inflateEnd(&zlib_stream);
+		});
+
+		int zlib_error = inflate(&zlib_stream, Z_NO_FLUSH);
+		if (zlib_error == Z_OK) {
+			Output::Warning("ZipFS: zlib failed for {}: More data available (Archive corrupted?)", path_normalized);
+			return nullptr;
+		}
+		else if (zlib_error != Z_STREAM_END) {
+			Output::Warning("ZipFS: zlib failed for {}: {} ({})", path_normalized, zlib_error, zlib_stream.msg ? zlib_stream.msg : "No error message");
+			return nullptr;
+		}
+		return new Filesystem_Stream::InputMemoryStreamBuf(std::move(dec_buf));
+	}
+
+	Output::Warning("ZipFS: {} has unsupported compression format. Only Deflate is supported", path_normalized);
 	return nullptr;
 }
 
